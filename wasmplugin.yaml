@@ -11,5 +11,4 @@ spec:
   imagePullPolicy: IfNotPresent
   phase: AUTHN
   pluginConfig:
-    configuration:
-      value: '{ "requiredKeys": ["id", "token"] }'
+    requiredKeys: ["id", "token"]

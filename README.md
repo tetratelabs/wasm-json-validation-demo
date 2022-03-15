@@ -61,4 +61,87 @@ invalid payload
 
 ### Run it via Istio
 
-TODO: write instructions. Basically just follow this https://istio.io/v1.9/docs/ops/configuration/extensibility/wasm-module-distribution/
+This example details deploying to a kind cluster running the Istio httpbin sample app.
+
+First build and push the wasm module to your container registry.
+
+```console
+export HUB=your_registry # e.g. docker.io/tetrate
+make docker-build-and-push
+```
+
+Create a test cluster with Istio, the httpbin sample app and the wasm plugin.
+
+```console
+# Create a test cluster
+kind create cluster
+
+# Install Istio and the httpbin sample app
+istioctl install --set profile=demo -y
+kubectl label namespace default istio-injection=enabled
+kubectl apply -f samples/httpbin/httpbin.yaml
+kubectl apply -f samples/httpbin/httpbin-gateway.yaml
+
+# Install the wasm plugin
+sed "s|YOUR_CONTAINER_REGISTRY|$HUB|" wasmplugin.yaml | kubectl apply -f -
+```
+
+Expose the ingress gateway on port 8080 on your local machine via.
+
+```console
+kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
+```
+
+Requests without the required payload will fail:
+
+```console
+% curl -i http://localhost:8080/post  -H 'Content-Type: application/json' --data '{"id": "xxx", "not_token": "xxx"}'
+HTTP/1.1 403 Forbidden
+content-length: 15
+content-type: text/plain
+date: Tue, 15 Mar 2022 23:05:52 GMT
+server: istio-envoy
+
+invalid payload
+```
+
+But those with the payload will proceed:
+
+```console
+% curl -i http://localhost:8080/post  -H 'Content-Type: application/json' --data '{"id": "xxx", "token": "xxx"}'
+HTTP/1.1 200 OK
+server: istio-envoy
+date: Tue, 15 Mar 2022 23:06:29 GMT
+content-type: application/json
+content-length: 884
+access-control-allow-origin: *
+access-control-allow-credentials: true
+x-envoy-upstream-service-time: 3
+
+{
+  "args": {},
+  "data": "{\"id\": \"xxx\", \"token\": \"xxx\"}",
+  "files": {},
+  "form": {},
+  "headers": {
+    "Accept": "*/*",
+    "Content-Length": "29",
+    "Content-Type": "application/json",
+    "Host": "localhost:8080",
+    "User-Agent": "curl/7.64.1",
+    "X-B3-Parentspanid": "99a94908edd26592",
+    "X-B3-Sampled": "1",
+    "X-B3-Spanid": "e12fc7fd9aa74838",
+    "X-B3-Traceid": "2b7375cda8bc98a299a94908edd26592",
+    "X-Envoy-Attempt-Count": "1",
+    "X-Envoy-Internal": "true",
+    "X-Forwarded-Client-Cert": "By=spiffe://cluster.local/ns/default/sa/httpbin;Hash=5703a66dcdbc8cafc8c29e1ebee1174f4bc81234d8dc1ccc20fb9e3c26b320e1;Subject=\"\";URI=spiffe://cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+  },
+  "json": {
+    "id": "xxx",
+    "token": "xxx"
+  },
+  "origin": "10.244.0.9",
+  "url": "http://localhost:8080/post"
+}
+```
