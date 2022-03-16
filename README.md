@@ -63,15 +63,6 @@ invalid payload
 
 This example details deploying to a kind cluster running the Istio httpbin sample app.
 
-First build and push the wasm module to your container registry.
-
-```console
-export HUB=your_registry # e.g. docker.io/tetrate
-make docker-build-and-push
-```
-
-Create a test cluster with Istio, the httpbin sample app and the wasm plugin.
-
 ```console
 # Create a test cluster
 kind create cluster
@@ -81,10 +72,40 @@ istioctl install --set profile=demo -y
 kubectl label namespace default istio-injection=enabled
 kubectl apply -f samples/httpbin/httpbin.yaml
 kubectl apply -f samples/httpbin/httpbin-gateway.yaml
+```
 
-# Install the wasm plugin
+For Istio 1.12 and later the easiest way is to use a WasmPlugin resource. For older Istio
+versions an EnvoyFilter is needed.
+
+#### Install using WasmPlugin resource
+
+Build and push the wasm module to your container registry, then apply the WasmPlugin.
+
+```console
+export HUB=your_registry # e.g. docker.io/tetrate
+make docker-build-and-push
+
 sed "s|YOUR_CONTAINER_REGISTRY|$HUB|" wasmplugin.yaml | kubectl apply -f -
 ```
+
+#### Install using EnvoyFilter
+
+To use an EnvoyFilter, create a config map containing the compiled wasm plugin, mount the config
+map into the gateway pod, and then configure Envoy via an EnvoyFilter to load the wasm plugin from
+a local file.
+
+```console
+# Create the config map
+kubectl -n istio-system create configmap wasm-plugins --from-file=plugin.wasm
+
+# Patch the gateway deployment to mount the config map
+kubectl -n istio-system patch deployment istio-ingressgateway --patch-file=gatewaydeploymentpatch.yaml
+
+# Create the EnvoyFilter
+kubectl apply -f envoyfilter.yaml
+```
+
+#### Test the plugin
 
 Expose the ingress gateway on port 8080 on your local machine via.
 
